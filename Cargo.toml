@@ -1,0 +1,30 @@
+[package]
+name = "claude-code-sync"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT"
+authors = ["Ehsan Khan"]
+description = "Portable backup, restore and cross-machine sync for a Claude Code setup."
+repository = "https://github.com/ehsan18t/claude-code-sync"
+homepage = "https://github.com/ehsan18t/claude-code-sync"
+keywords = ["claude-code", "backup", "restore", "sync", "cli"]
+categories = ["command-line-utilities"]
+readme = "README.md"
+
+[dependencies]
+# preserve_order keeps settings.json key order stable across a restore.
+serde_json = { version = "1", features = ["preserve_order"] }
+serde = { version = "1", features = ["derive"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+sha2 = "0.10"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+dirs = "5"
+gethostname = "0.5"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

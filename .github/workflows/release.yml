@@ -1,0 +1,73 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo test --all
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset: claude-code-sync-windows-x86_64.exe
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            asset: claude-code-sync-windows-arm64.exe
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset: claude-code-sync-linux-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset: claude-code-sync-macos-arm64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            asset: claude-code-sync-macos-x86_64
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Stage asset
+        shell: bash
+        run: |
+          binary=target/${{ matrix.target }}/release/claude-code-sync
+          [ -f "$binary.exe" ] && binary="$binary.exe"
+          cp "$binary" "${{ matrix.asset }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: claude-code-sync-*
+          generate_release_notes: true
