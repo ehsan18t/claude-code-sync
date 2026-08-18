@@ -20,7 +20,10 @@ pub fn forward_slashes(input: &str) -> String {
 
 /// A path inside a larger command string legitimately ends at one of these.
 fn is_boundary(byte: u8) -> bool {
-    matches!(byte, b'/' | b'\\' | b'"' | b'\'' | b' ' | b'\t' | b'\r' | b'\n')
+    matches!(
+        byte,
+        b'/' | b'\\' | b'"' | b'\'' | b' ' | b'\t' | b'\r' | b'\n'
+    )
 }
 
 /// A backslash is a path separator only when what follows could start a path segment.
@@ -90,7 +93,10 @@ fn replace_prefix(input: &str, needle: &str, token: &str) -> String {
             }
         }
 
-        let character = input[cursor..].chars().next().expect("cursor is on a char boundary");
+        let character = input[cursor..]
+            .chars()
+            .next()
+            .expect("cursor is on a char boundary");
         out.push(character);
         cursor += character.len_utf8();
     }
@@ -145,17 +151,26 @@ mod tests {
 
     #[test]
     fn replaces_the_node_binary_with_a_token() {
-        assert_eq!(tokenize_path("C:/Program Files/nodejs/node.exe", &win()), "${NODE}");
+        assert_eq!(
+            tokenize_path("C:/Program Files/nodejs/node.exe", &win()),
+            "${NODE}"
+        );
     }
 
     #[test]
     fn normalizes_windows_backslashes() {
-        assert_eq!(tokenize_path(r"C:\Users\Ehsan\.claude\agents", &win()), "${HOME}/.claude/agents");
+        assert_eq!(
+            tokenize_path(r"C:\Users\Ehsan\.claude\agents", &win()),
+            "${HOME}/.claude/agents"
+        );
     }
 
     #[test]
     fn matches_the_home_prefix_case_insensitively() {
-        assert_eq!(tokenize_path("c:/users/ehsan/.claude", &win()), "${HOME}/.claude");
+        assert_eq!(
+            tokenize_path("c:/users/ehsan/.claude", &win()),
+            "${HOME}/.claude"
+        );
     }
 
     #[test]
@@ -245,6 +260,9 @@ mod tests {
         let original = "C:/Users/Ehsan/.claude/hooks/load-repo-rules.mjs";
         let on_linux = resolve_path(&tokenize_path(original, &win()), &nix());
         assert_eq!(on_linux, "/home/dev/.claude/hooks/load-repo-rules.mjs");
-        assert_eq!(resolve_path(&tokenize_path(&on_linux, &nix()), &win()), original);
+        assert_eq!(
+            resolve_path(&tokenize_path(&on_linux, &nix()), &win()),
+            original
+        );
     }
 }

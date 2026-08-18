@@ -98,8 +98,14 @@ mod tests {
     #[test]
     fn an_archive_round_trips_its_entries() {
         let entries = vec![
-            Entry { path: "claude/CLAUDE.md".into(), data: b"# rules\n".to_vec() },
-            Entry { path: "agents/.skill-lock.json".into(), data: b"{}".to_vec() },
+            Entry {
+                path: "claude/CLAUDE.md".into(),
+                data: b"# rules\n".to_vec(),
+            },
+            Entry {
+                path: "agents/.skill-lock.json".into(),
+                data: b"{}".to_vec(),
+            },
         ];
         let bytes = write_zip(&entries).unwrap();
         let read = read_zip(bytes).unwrap();
@@ -113,7 +119,11 @@ mod tests {
     #[test]
     fn a_binary_payload_round_trips_byte_for_byte() {
         let png = vec![0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff];
-        let bytes = write_zip(&[Entry { path: "claude/x.png".into(), data: png.clone() }]).unwrap();
+        let bytes = write_zip(&[Entry {
+            path: "claude/x.png".into(),
+            data: png.clone(),
+        }])
+        .unwrap();
         assert_eq!(read_zip(bytes).unwrap()[0].data, png);
     }
 

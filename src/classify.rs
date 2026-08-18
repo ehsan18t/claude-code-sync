@@ -84,9 +84,18 @@ pub fn classify_entry(rel_path: &str, options: &BackupOptions) -> Classification
 mod tests {
     use super::*;
 
-    const DEFAULTS: BackupOptions = BackupOptions { with_memory: false, include_credentials: false };
-    const WITH_MEMORY: BackupOptions = BackupOptions { with_memory: true, include_credentials: false };
-    const WITH_CREDS: BackupOptions = BackupOptions { with_memory: false, include_credentials: true };
+    const DEFAULTS: BackupOptions = BackupOptions {
+        with_memory: false,
+        include_credentials: false,
+    };
+    const WITH_MEMORY: BackupOptions = BackupOptions {
+        with_memory: true,
+        include_credentials: false,
+    };
+    const WITH_CREDS: BackupOptions = BackupOptions {
+        with_memory: false,
+        include_credentials: true,
+    };
 
     #[test]
     fn hand_written_config_is_included() {
@@ -99,7 +108,11 @@ mod tests {
             "claude/skills/lean-orchestration/SKILL.md",
             "claude/tools/helper.ts",
         ] {
-            assert_eq!(classify_entry(path, &DEFAULTS), Classification::Include, "{path}");
+            assert_eq!(
+                classify_entry(path, &DEFAULTS),
+                Classification::Include,
+                "{path}"
+            );
         }
     }
 
@@ -109,7 +122,10 @@ mod tests {
             classify_entry("agents/skills/grilling/SKILL.md", &DEFAULTS),
             Classification::Include
         );
-        assert_eq!(classify_entry("agents/.skill-lock.json", &DEFAULTS), Classification::Include);
+        assert_eq!(
+            classify_entry("agents/.skill-lock.json", &DEFAULTS),
+            Classification::Include
+        );
     }
 
     #[test]
@@ -128,18 +144,28 @@ mod tests {
             "claude/history.jsonl",
             "claude/stats-cache.json",
         ] {
-            assert_eq!(classify_entry(path, &DEFAULTS), Classification::Exclude, "{path}");
+            assert_eq!(
+                classify_entry(path, &DEFAULTS),
+                Classification::Exclude,
+                "{path}"
+            );
         }
     }
 
     #[test]
     fn credentials_are_refused_by_default_and_flagged_rather_than_merely_skipped() {
-        assert_eq!(classify_entry("claude/.credentials.json", &DEFAULTS), Classification::Secret);
+        assert_eq!(
+            classify_entry("claude/.credentials.json", &DEFAULTS),
+            Classification::Secret
+        );
     }
 
     #[test]
     fn credentials_are_included_only_behind_the_explicit_opt_in() {
-        assert_eq!(classify_entry("claude/.credentials.json", &WITH_CREDS), Classification::Include);
+        assert_eq!(
+            classify_entry("claude/.credentials.json", &WITH_CREDS),
+            Classification::Include
+        );
     }
 
     #[test]
@@ -168,7 +194,10 @@ mod tests {
             classify_entry("claude/skills/memory/SKILL.md", &WITH_MEMORY),
             Classification::Include
         );
-        assert_eq!(classify_entry("claude/cache/memory/blob", &WITH_MEMORY), Classification::Exclude);
+        assert_eq!(
+            classify_entry("claude/cache/memory/blob", &WITH_MEMORY),
+            Classification::Exclude
+        );
     }
 
     #[test]
@@ -185,7 +214,10 @@ mod tests {
 
     #[test]
     fn an_unknown_top_level_file_is_excluded_rather_than_guessed() {
-        assert_eq!(classify_entry("claude/some-future-cache.bin", &DEFAULTS), Classification::Exclude);
+        assert_eq!(
+            classify_entry("claude/some-future-cache.bin", &DEFAULTS),
+            Classification::Exclude
+        );
     }
 
     #[test]

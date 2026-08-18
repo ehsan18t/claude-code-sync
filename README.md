@@ -31,10 +31,54 @@ archive works on any OS.
 
 ## Install
 
-Download the binary for your platform from
-[Releases](https://github.com/ehsan18t/claude-code-sync/releases). No runtime, no installer.
+One line, no runtime, no admin rights.
 
-Or build it:
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/ehsan18t/claude-code-sync/main/install.ps1 | iex
+```
+
+**Linux and macOS**:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ehsan18t/claude-code-sync/main/install.sh | sh
+```
+
+Then open a new terminal and run `claude-code-sync`.
+
+Windows installs to `%LOCALAPPDATA%\Programs\claude-code-sync` and adds it to your user PATH.
+Linux and macOS install to `/usr/local/bin`, falling back to `~/.local/bin` when that is not
+writable. Set `BINDIR` to choose somewhere else.
+
+### Uninstall
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/ehsan18t/claude-code-sync/main/install.ps1))) -Uninstall
+```
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ehsan18t/claude-code-sync/main/install.sh | sh -s -- --uninstall
+```
+
+Both remove the binary and the PATH entry. Neither touches your `~/.claude` config or your
+backups.
+
+### Homebrew
+
+Not available yet. `brew install claude-code-sync` needs the project in homebrew-core, which
+requires 75 or more stars, forks or watchers. A personal tap works before then, and the formula
+is ready at [packaging/homebrew/claude-code-sync.rb](packaging/homebrew/claude-code-sync.rb):
+create a repo named `homebrew-tap`, copy the formula to `Formula/`, fill in the version and
+checksums from a release's `SHA256SUMS`, and it becomes:
+
+```sh
+brew install ehsan18t/tap/claude-code-sync
+```
+
+Until then, the `curl` line above works on macOS.
+
+### From source
 
 ```sh
 cargo build --release
@@ -160,6 +204,35 @@ round-tripping.
 Filesystem walking and symlink recreation are covered by a real backup-and-restore round trip into
 a `CLAUDE_SYNC_HOME` directory rather than by mocks, because that is what catches the failures
 mocks hide.
+
+## Releasing
+
+Two pipelines, deliberately separate.
+
+**`ci.yml`** runs on every push and pull request: `cargo fmt --check`, `cargo clippy -D warnings`,
+and the test suite. No binaries are built, so a commit stays cheap.
+
+**`release.yml`** runs only on a `v*` tag, or manually via workflow dispatch. It builds all six
+targets, generates `SHA256SUMS`, and opens a **draft** release. Nothing goes public until you read
+the draft on GitHub and publish it yourself.
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+# then review the draft at github.com/ehsan18t/claude-code-sync/releases and publish
+```
+
+Because the release is a draft, the install one-liners above will not find the assets until you
+publish it. That is the intended order.
+
+| Target | Asset |
+|---|---|
+| Windows x86_64 | `claude-code-sync-windows-x86_64.exe` |
+| Windows arm64 | `claude-code-sync-windows-arm64.exe` |
+| Linux x86_64 | `claude-code-sync-linux-x86_64` |
+| Linux arm64 | `claude-code-sync-linux-arm64` |
+| macOS arm64 | `claude-code-sync-macos-arm64` |
+| macOS x86_64 | `claude-code-sync-macos-x86_64` |
 
 ## License
 

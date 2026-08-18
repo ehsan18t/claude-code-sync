@@ -103,7 +103,10 @@ mod tests {
 
     #[test]
     fn writes_crlf_when_the_target_is_windows() {
-        assert_eq!(denormalize_for_disk(b"a\nb\n", LineEnding::Crlf), b"a\r\nb\r\n");
+        assert_eq!(
+            denormalize_for_disk(b"a\nb\n", LineEnding::Crlf),
+            b"a\r\nb\r\n"
+        );
     }
 
     #[test]

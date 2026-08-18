@@ -56,7 +56,10 @@ pub fn current_context() -> Result<PathContext> {
 
 /// The two roots an archive carries, keyed by their prefix inside it.
 fn roots(home: &Path) -> Vec<(&'static str, PathBuf)> {
-    vec![("claude", home.join(".claude")), ("agents", home.join(".agents"))]
+    vec![
+        ("claude", home.join(".claude")),
+        ("agents", home.join(".agents")),
+    ]
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -70,8 +73,11 @@ struct Walked {
 }
 
 fn walk(root: &Path, prefix: &str, ctx: &PathContext, options: &BackupOptions) -> Result<Walked> {
-    let mut found =
-        Walked { files: Vec::new(), links: Vec::new(), skipped_secrets: Vec::new() };
+    let mut found = Walked {
+        files: Vec::new(),
+        links: Vec::new(),
+        skipped_secrets: Vec::new(),
+    };
     if !root.exists() {
         return Ok(found);
     }
@@ -117,7 +123,11 @@ fn walk(root: &Path, prefix: &str, ctx: &PathContext, options: &BackupOptions) -
     Ok(found)
 }
 
-pub fn backup(options: &BackupOptions, created_at: String, host: String) -> Result<(Vec<u8>, Manifest)> {
+pub fn backup(
+    options: &BackupOptions,
+    created_at: String,
+    host: String,
+) -> Result<(Vec<u8>, Manifest)> {
     let ctx = current_context()?;
     let home = home_dir()?;
     let mut manifest = Manifest::new(created_at, host, options);
@@ -142,7 +152,10 @@ pub fn backup(options: &BackupOptions, created_at: String, host: String) -> Resu
                 sha256: sha256_hex(&data),
                 size: data.len(),
             });
-            entries.push(Entry { path: archive_path, data });
+            entries.push(Entry {
+                path: archive_path,
+                data,
+            });
         }
     }
 
@@ -161,9 +174,11 @@ pub fn map_strings(value: &serde_json::Value, f: &dyn Fn(&str) -> String) -> ser
     match value {
         Value::String(s) => Value::String(f(s)),
         Value::Array(items) => Value::Array(items.iter().map(|v| map_strings(v, f)).collect()),
-        Value::Object(map) => {
-            Value::Object(map.iter().map(|(k, v)| (k.clone(), map_strings(v, f))).collect())
-        }
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(k, v)| (k.clone(), map_strings(v, f)))
+                .collect(),
+        ),
         other => other.clone(),
     }
 }
@@ -194,7 +209,11 @@ pub fn read_manifest(entries: &[Entry]) -> Result<Manifest> {
     Ok(manifest)
 }
 
-pub fn restore(entries: &[Entry], manifest: &Manifest, options: &mut RestoreOptions) -> Result<Vec<String>> {
+pub fn restore(
+    entries: &[Entry],
+    manifest: &Manifest,
+    options: &mut RestoreOptions,
+) -> Result<Vec<String>> {
     let ctx = current_context()?;
     let home = home_dir()?;
     let eol = LineEnding::native();
@@ -204,7 +223,9 @@ pub fn restore(entries: &[Entry], manifest: &Manifest, options: &mut RestoreOpti
         if entry.path == MANIFEST {
             continue;
         }
-        let Some(absolute) = target_path(&home, &entry.path) else { continue };
+        let Some(absolute) = target_path(&home, &entry.path) else {
+            continue;
+        };
 
         let mut data = entry.data.clone();
         if entry.path == SETTINGS {
@@ -222,7 +243,11 @@ pub fn restore(entries: &[Entry], manifest: &Manifest, options: &mut RestoreOpti
 
         actions.push(format!(
             "{}  {}",
-            if absolute.exists() { "update" } else { "create" },
+            if absolute.exists() {
+                "update"
+            } else {
+                "create"
+            },
             entry.path
         ));
         if options.dry_run {
@@ -235,7 +260,9 @@ pub fn restore(entries: &[Entry], manifest: &Manifest, options: &mut RestoreOpti
     }
 
     for link in &manifest.links {
-        let Some(absolute) = target_path(&home, &link.path) else { continue };
+        let Some(absolute) = target_path(&home, &link.path) else {
+            continue;
+        };
         if absolute.exists() {
             continue;
         }

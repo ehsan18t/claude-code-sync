@@ -6,11 +6,14 @@ use claude_code_sync::classify::BackupOptions;
 use claude_code_sync::merge::{find_conflicts, Choice, Conflict, MergeStrategy};
 use claude_code_sync::paths::resolve_path;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 const USAGE: &str = "\
 claude-code-sync: portable backup and restore for a Claude Code setup
 
   claude-code-sync backup  [--with-memory] [--include-credentials] [--out DIR]
   claude-code-sync restore <archive.zip> [--merge=STRATEGY] [--dry-run]
+  claude-code-sync --version
 
 Merge strategies, applied to settings.json only:
   incoming   deep merge, the archive wins a conflict          (default)
@@ -34,8 +37,12 @@ impl Args {
     /// Accepts both `--out=DIR` and `--out DIR`.
     fn parse(raw: Vec<String>) -> Self {
         const VALUE_FLAGS: &[&str] = &["--out", "--merge"];
-        let mut parsed =
-            Args { command: None, positional: Vec::new(), flags: Vec::new(), values: Vec::new() };
+        let mut parsed = Args {
+            command: None,
+            positional: Vec::new(),
+            flags: Vec::new(),
+            values: Vec::new(),
+        };
         let mut index = 0;
 
         while index < raw.len() {
@@ -54,7 +61,7 @@ impl Args {
                     continue;
                 }
             }
-            if argument.starts_with("--") {
+            if argument.starts_with('-') {
                 parsed.flags.push(argument.clone());
             } else if parsed.command.is_none() {
                 parsed.command = Some(argument.clone());
@@ -72,7 +79,10 @@ impl Args {
     }
 
     fn value(&self, name: &str) -> Option<&str> {
-        self.values.iter().find(|(n, _)| n == name).map(|(_, v)| v.as_str())
+        self.values
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.as_str())
     }
 }
 
@@ -100,6 +110,16 @@ fn ask_for(conflicts: &[Conflict]) -> Vec<(String, Choice)> {
 
 fn run() -> Result<i32> {
     let args = Args::parse(std::env::args().skip(1).collect());
+
+    if args.has("--version") || args.has("-V") || args.command.as_deref() == Some("version") {
+        println!("claude-code-sync {VERSION}");
+        return Ok(0);
+    }
+    if args.has("--help") || args.has("-h") || args.command.as_deref() == Some("help") {
+        println!("{USAGE}");
+        return Ok(0);
+    }
+
     let now = chrono::Local::now();
     let host = gethostname::gethostname().to_string_lossy().to_string();
 
@@ -110,22 +130,32 @@ fn run() -> Result<i32> {
                 include_credentials: args.has("--include-credentials"),
             };
             if options.include_credentials {
-                eprintln!("WARNING: this archive will contain .credentials.json. Do not share it.\n");
+                eprintln!(
+                    "WARNING: this archive will contain .credentials.json. Do not share it.\n"
+                );
             }
 
-            let (archive, manifest) =
-                backup(&options, now.to_rfc3339(), host.clone())?;
+            let (archive, manifest) = backup(&options, now.to_rfc3339(), host.clone())?;
 
-            let directory = args.value("--out").map(std::path::PathBuf::from).unwrap_or(
-                std::env::current_dir()?,
-            );
+            let directory = args
+                .value("--out")
+                .map(std::path::PathBuf::from)
+                .unwrap_or(std::env::current_dir()?);
             std::fs::create_dir_all(&directory)?;
             let name = format!("claude-sync-{host}-{}.zip", now.format("%Y%m%d-%H%M%S"));
             let out = directory.join(name);
             std::fs::write(&out, &archive)?;
 
-            println!("{} files, {} links", manifest.files.len(), manifest.links.len());
-            println!("{:.1} KB -> {}", archive.len() as f64 / 1024.0, out.display());
+            println!(
+                "{} files, {} links",
+                manifest.files.len(),
+                manifest.links.len()
+            );
+            println!(
+                "{:.1} KB -> {}",
+                archive.len() as f64 / 1024.0,
+                out.display()
+            );
             Ok(0)
         }
 
@@ -137,7 +167,10 @@ fn run() -> Result<i32> {
 
             let Some(strategy) = MergeStrategy::parse(args.value("--merge").unwrap_or("incoming"))
             else {
-                eprintln!("unknown merge strategy: {}", args.value("--merge").unwrap_or(""));
+                eprintln!(
+                    "unknown merge strategy: {}",
+                    args.value("--merge").unwrap_or("")
+                );
                 return Ok(1);
             };
 
@@ -165,13 +198,16 @@ fn run() -> Result<i32> {
             if !dry_run {
                 let directory = home_dir()?.join(".claude").join("backups");
                 let (snapshot, _) = backup(
-                    &BackupOptions { with_memory: true, include_credentials: false },
+                    &BackupOptions {
+                        with_memory: true,
+                        include_credentials: false,
+                    },
                     now.to_rfc3339(),
                     host.clone(),
                 )?;
                 std::fs::create_dir_all(&directory)?;
-                let out = directory
-                    .join(format!("pre-restore-{}.zip", now.format("%Y%m%d-%H%M%S")));
+                let out =
+                    directory.join(format!("pre-restore-{}.zip", now.format("%Y%m%d-%H%M%S")));
                 std::fs::write(&out, snapshot)?;
                 println!("snapshot of current config -> {}\n", out.display());
             }
@@ -183,7 +219,11 @@ fn run() -> Result<i32> {
                     .map(|(_, choice)| *choice)
                     .unwrap_or(Choice::Incoming)
             };
-            let mut options = RestoreOptions { strategy, dry_run, resolve: &mut resolve };
+            let mut options = RestoreOptions {
+                strategy,
+                dry_run,
+                resolve: &mut resolve,
+            };
             let actions = restore(&entries, &manifest, &mut options)?;
 
             for action in &actions {
@@ -192,7 +232,11 @@ fn run() -> Result<i32> {
             println!(
                 "\n{} {}",
                 actions.len(),
-                if dry_run { "planned (dry run, nothing written)" } else { "applied" }
+                if dry_run {
+                    "planned (dry run, nothing written)"
+                } else {
+                    "applied"
+                }
             );
             Ok(0)
         }

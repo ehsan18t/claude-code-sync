@@ -177,19 +177,34 @@ mod tests {
 
     #[test]
     fn replace_discards_the_local_file_entirely() {
-        let merged = merge_settings(&local(), &incoming(), MergeStrategy::Replace, &mut never_asked);
+        let merged = merge_settings(
+            &local(),
+            &incoming(),
+            MergeStrategy::Replace,
+            &mut never_asked,
+        );
         assert_eq!(merged, incoming());
     }
 
     #[test]
     fn incoming_wins_a_scalar_conflict() {
-        let merged = merge_settings(&local(), &incoming(), MergeStrategy::Incoming, &mut never_asked);
+        let merged = merge_settings(
+            &local(),
+            &incoming(),
+            MergeStrategy::Incoming,
+            &mut never_asked,
+        );
         assert_eq!(merged["model"], json!("opus[1m]"));
     }
 
     #[test]
     fn existing_wins_a_scalar_conflict() {
-        let merged = merge_settings(&local(), &incoming(), MergeStrategy::Existing, &mut never_asked);
+        let merged = merge_settings(
+            &local(),
+            &incoming(),
+            MergeStrategy::Existing,
+            &mut never_asked,
+        );
         assert_eq!(merged["model"], json!("sonnet"));
     }
 
@@ -197,7 +212,11 @@ mod tests {
     fn a_local_only_key_survives_every_merge_strategy() {
         for strategy in [MergeStrategy::Incoming, MergeStrategy::Existing] {
             let merged = merge_settings(&local(), &incoming(), strategy, &mut never_asked);
-            assert_eq!(merged["effortLevel"], json!("high"), "lost under {strategy:?}");
+            assert_eq!(
+                merged["effortLevel"],
+                json!("high"),
+                "lost under {strategy:?}"
+            );
             assert_eq!(
                 merged["permissions"]["defaultMode"],
                 json!("auto"),
@@ -210,13 +229,22 @@ mod tests {
     fn an_incoming_only_key_is_added_under_every_merge_strategy() {
         for strategy in [MergeStrategy::Incoming, MergeStrategy::Existing] {
             let merged = merge_settings(&local(), &incoming(), strategy, &mut never_asked);
-            assert_eq!(merged["tui"], json!("fullscreen"), "missing under {strategy:?}");
+            assert_eq!(
+                merged["tui"],
+                json!("fullscreen"),
+                "missing under {strategy:?}"
+            );
         }
     }
 
     #[test]
     fn arrays_are_unioned_with_local_order_kept_and_duplicates_dropped() {
-        let merged = merge_settings(&local(), &incoming(), MergeStrategy::Incoming, &mut never_asked);
+        let merged = merge_settings(
+            &local(),
+            &incoming(),
+            MergeStrategy::Incoming,
+            &mut never_asked,
+        );
         assert_eq!(
             merged["permissions"]["allow"],
             json!(["Bash(cargo:*)", "Bash(npm view:*)"])
@@ -225,7 +253,12 @@ mod tests {
 
     #[test]
     fn nested_maps_merge_key_by_key_rather_than_replacing_the_whole_map() {
-        let merged = merge_settings(&local(), &incoming(), MergeStrategy::Incoming, &mut never_asked);
+        let merged = merge_settings(
+            &local(),
+            &incoming(),
+            MergeStrategy::Incoming,
+            &mut never_asked,
+        );
         assert_eq!(
             merged["enabledPlugins"],
             json!({ "rust-analyzer-lsp@official": true, "superpowers@official": false })
@@ -269,8 +302,22 @@ mod tests {
 
     #[test]
     fn merging_preserves_the_key_order_of_the_local_file() {
-        let merged = merge_settings(&local(), &incoming(), MergeStrategy::Incoming, &mut never_asked);
+        let merged = merge_settings(
+            &local(),
+            &incoming(),
+            MergeStrategy::Incoming,
+            &mut never_asked,
+        );
         let keys: Vec<&String> = merged.as_object().unwrap().keys().collect();
-        assert_eq!(keys, vec!["model", "effortLevel", "permissions", "enabledPlugins", "tui"]);
+        assert_eq!(
+            keys,
+            vec![
+                "model",
+                "effortLevel",
+                "permissions",
+                "enabledPlugins",
+                "tui"
+            ]
+        );
     }
 }
