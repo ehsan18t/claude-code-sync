@@ -30,6 +30,26 @@ pub fn home_dir() -> Result<PathBuf> {
     dirs::home_dir().ok_or_else(|| "could not determine the home directory".into())
 }
 
+/// Read `~/.claude/.claude-sync-include`, the escape hatch for anything the allowlist misses.
+///
+/// One archive-relative path per line, `#` for comments, a trailing `/` for a whole subtree.
+/// Missing file means no extras, which is the normal case.
+pub fn read_include_list() -> Vec<String> {
+    let Ok(home) = home_dir() else {
+        return Vec::new();
+    };
+    let path = home.join(".claude").join(crate::classify::INCLUDE_LIST);
+    let Ok(contents) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    contents
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_string)
+        .collect()
+}
+
 /// Where node lives on this machine, so hook commands survive the trip.
 ///
 /// Falling back to a bare `node` is deliberate: an unresolved `${NODE}` would be written into

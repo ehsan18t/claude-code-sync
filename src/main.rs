@@ -1,6 +1,8 @@
 use std::io::{self, BufRead, Write};
 
-use claude_code_sync::app::{backup, home_dir, read_manifest, restore, RestoreOptions};
+use claude_code_sync::app::{
+    backup, home_dir, read_include_list, read_manifest, restore, RestoreOptions,
+};
 use claude_code_sync::archive::{read_zip, Result};
 use claude_code_sync::classify::BackupOptions;
 use claude_code_sync::merge::{find_conflicts, Choice, Conflict, MergeStrategy};
@@ -21,10 +23,14 @@ Merge strategies, applied to settings.json only:
   replace    discard this machine's settings entirely
   ask        prompt for each conflicting key
 
-Always carried:  CLAUDE.md, settings.json, agents/, commands/, hooks/, skills/, tools/,
+Always carried:  CLAUDE.md, settings.json, settings.local.json, keybindings.json,
+                 agents/, commands/, hooks/, skills/, output-styles/, tools/,
+                 plugin version pins, root-level feature-marker dotfiles,
                  and the whole ~/.agents skill source tree.
 Never carried:   transcripts, plugin checkouts, caches, telemetry, session state.
-                 Plugins reinstall themselves from settings.json.";
+
+Anything else you want carried goes in ~/.claude/.claude-sync-include, one archive-relative
+path per line, a trailing / for a whole subtree. Example:  claude/history.jsonl";
 
 struct Args {
     command: Option<String>,
@@ -128,7 +134,14 @@ fn run() -> Result<i32> {
             let options = BackupOptions {
                 with_memory: args.has("--with-memory"),
                 include_credentials: args.has("--include-credentials"),
+                extras: read_include_list(),
             };
+            if !options.extras.is_empty() {
+                println!(
+                    "{} extra path(s) from .claude-sync-include",
+                    options.extras.len()
+                );
+            }
             if options.include_credentials {
                 eprintln!(
                     "WARNING: this archive will contain .credentials.json. Do not share it.\n"
@@ -197,10 +210,12 @@ fn run() -> Result<i32> {
 
             if !dry_run {
                 let directory = home_dir()?.join(".claude").join("backups");
+                // The snapshot must cover everything a restore could overwrite, extras included.
                 let (snapshot, _) = backup(
                     &BackupOptions {
                         with_memory: true,
                         include_credentials: false,
+                        extras: read_include_list(),
                     },
                     now.to_rfc3339(),
                     host.clone(),

@@ -115,21 +115,40 @@ claude-code-sync restore claude-sync-desktop-20260819-034932.zip --merge=ask
 
 | Carried | Why |
 |---|---|
-| `~/.claude/CLAUDE.md`, `settings.json` | Authored by you |
-| `~/.claude/agents/ commands/ hooks/ skills/ tools/` | Authored by you |
+| `CLAUDE.md`, `settings.json`, `settings.local.json`, `keybindings.json` | Authored by you |
+| `agents/ commands/ hooks/ skills/ output-styles/ tools/` | Authored by you |
+| `plugins/installed_plugins.json`, `known_marketplaces.json`, `blocklist.json` | Version and commit pins. `settings.json` records only which plugins are on, not which version, so without these a restore drifts to latest |
+| Root-level dotfiles such as `.i-have-adhd-always` | Feature markers set by plugins. Tiny, unpredictable, and losing one silently changes behavior |
 | `~/.agents/skills/` and `.skill-lock.json` | The real skill sources, when `~/.claude/skills/` symlinks into them |
-| `~/.claude/projects/*/memory/` | Only with `--with-memory`. Distilled over time, never regenerates |
+| `projects/*/memory/` | Only with `--with-memory`. Distilled over time, never regenerates |
 
 | Left behind | Why |
 |---|---|
 | `projects/*.jsonl` transcripts | Regenerated, and large |
-| `plugins/` | Reinstalls itself from `enabledPlugins` in `settings.json` |
+| `plugins/cache/ repos/ marketplaces/`, `plugin-catalog-cache.json` | Re-downloaded from the pins above |
 | `security/ cache/ file-history/ shell-snapshots/ sessions/ debug/ telemetry/` | Derived state |
+| `.last-cleanup`, `.last-update-result.json` | Tool state, not your choices |
 | `.credentials.json` | An auth token. Never in an archive that travels, unless you pass `--include-credentials` |
 | Any `.zip` | Stops an archive being swept into the next one |
 
-The include list is an allowlist, not a denylist. A cache directory added in a future Claude Code
-release is excluded by default rather than silently swallowed into your backups.
+### Carrying something else
+
+The rules above are an allowlist, so anything unrecognised is dropped rather than swallowed. That
+keeps a future cache directory out of your backups, but it also means a file nobody anticipated
+gets missed. The escape hatch is `~/.claude/.claude-sync-include`:
+
+```
+# one archive-relative path per line, trailing / for a whole subtree
+claude/history.jsonl
+claude/context-mode/
+```
+
+Paths are archive-relative: `claude/…` is `~/.claude`, `agents/…` is `~/.agents`. The list itself
+is carried, so it travels with your setup. `.credentials.json` is checked before this list and
+cannot be included through it.
+
+To see exactly what a backup would carry, read `manifest.json` inside the zip. It lists every file
+with its size and SHA-256.
 
 ## Path rewriting
 
@@ -197,7 +216,7 @@ so setting that variable does not redirect anything. Use `CLAUDE_SYNC_HOME`.
 cargo test
 ```
 
-57 tests. The pure logic is covered directly: path tokenization, settings merge across all four
+63 tests. The pure logic is covered directly: path tokenization, settings merge across all four
 strategies, line-ending and binary handling, include/exclude classification, and archive
 round-tripping.
 
