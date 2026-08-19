@@ -154,10 +154,11 @@ fn run() -> Result<i32> {
                 .value("--out")
                 .map(std::path::PathBuf::from)
                 .unwrap_or(std::env::current_dir()?);
-            std::fs::create_dir_all(&directory)?;
+            std::fs::create_dir_all(&directory)
+                .map_err(|e| format!("{}: {e}", directory.display()))?;
             let name = format!("claude-sync-{host}-{}.zip", now.format("%Y%m%d-%H%M%S"));
             let out = directory.join(name);
-            std::fs::write(&out, &archive)?;
+            std::fs::write(&out, &archive).map_err(|e| format!("{}: {e}", out.display()))?;
 
             println!(
                 "{} files, {} links",
@@ -188,7 +189,8 @@ fn run() -> Result<i32> {
             };
 
             let dry_run = args.has("--dry-run");
-            let entries = read_zip(std::fs::read(path)?)?;
+            let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
+            let entries = read_zip(bytes).map_err(|e| format!("{path}: {e}"))?;
             let manifest = read_manifest(&entries)?;
 
             // Conflicts are collected up front so the interactive prompt is not tangled into
@@ -202,8 +204,13 @@ fn run() -> Result<i32> {
                     let parsed: serde_json::Value = serde_json::from_slice(&archived.data)?;
                     let incoming =
                         claude_code_sync::app::map_strings(&parsed, &|s| resolve_path(s, &ctx));
-                    let existing: serde_json::Value =
-                        serde_json::from_slice(&std::fs::read(&settings)?)?;
+                    let bytes = std::fs::read(&settings)
+                        .map_err(|e| format!("{}: {e}", settings.display()))?;
+                    let existing: serde_json::Value = serde_json::from_slice(&bytes)
+                        .map_err(|e| format!("{}: {e}", settings.display()))?;
+                    // Same canonicalization the merge uses, or `ask` prompts about a pair of
+                    // values that differ only in separator style.
+                    let existing = claude_code_sync::app::canonicalize(&existing, &ctx);
                     answers = ask_for(&find_conflicts(&existing, &incoming));
                 }
             }

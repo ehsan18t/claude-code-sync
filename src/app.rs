@@ -86,6 +86,34 @@ fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+/// Name the file an io error happened to. `os error 3` on its own points at nothing.
+fn at(path: &Path) -> impl Fn(std::io::Error) -> Box<dyn std::error::Error> + '_ {
+    move |error| format!("{}: {error}", path.display()).into()
+}
+
+/// Refuse an archive path that could write outside the two restore roots.
+///
+/// A zip is an untrusted input. Left unchecked, an entry named `claude/../../.bashrc` is joined
+/// straight onto the home directory and lands outside it, so the check is on the path components
+/// rather than on the joined result: `..`, an absolute segment and a drive letter are all refused,
+/// in either separator style, whichever OS wrote the archive.
+fn check_safe(archive_path: &str) -> Result<()> {
+    let bad = archive_path.split(['/', '\\']).any(|part| {
+        part.is_empty()
+            || part == "."
+            || part == ".."
+            || Path::new(part).is_absolute()
+            || matches!(part.as_bytes(), [_, b':', ..])
+    });
+    if bad {
+        return Err(format!(
+            "archive entry would write outside ~/.claude and ~/.agents, refusing: {archive_path}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
 struct Walked {
     files: Vec<(String, PathBuf)>,
     links: Vec<LinkRecord>,
@@ -161,9 +189,11 @@ pub fn backup(
         manifest.links.extend(walked.links);
 
         for (archive_path, absolute) in walked.files {
-            let mut data = normalize_for_archive(&fs::read(&absolute)?);
+            let raw = fs::read(&absolute).map_err(at(&absolute))?;
+            let mut data = normalize_for_archive(&raw);
             if archive_path == SETTINGS {
-                let parsed: serde_json::Value = serde_json::from_slice(&data)?;
+                let parsed: serde_json::Value = serde_json::from_slice(&data)
+                    .map_err(|e| format!("{}: {e}", absolute.display()))?;
                 let tokenized = map_strings(&parsed, &|s| tokenize_path(s, &ctx));
                 data = format!("{}\n", serde_json::to_string_pretty(&tokenized)?).into_bytes();
             }
@@ -203,6 +233,54 @@ pub fn map_strings(value: &serde_json::Value, f: &dyn Fn(&str) -> String) -> ser
     }
 }
 
+/// Spell this machine's own paths the way a restored value spells them.
+///
+/// Merging compares strings, so a local `"C:\Users\you\.claude\hooks\x.mjs"` and the restored
+/// `"C:/Users/you/.claude/hooks/x.mjs"` are two different entries and the union appends the
+/// second one. Round-tripping the local side through the same tokenize-then-resolve the incoming
+/// side already went through collapses the pair. Values holding no path are returned untouched,
+/// which is what the tokenizer's byte-for-byte guarantee buys.
+pub fn canonicalize(value: &serde_json::Value, ctx: &PathContext) -> serde_json::Value {
+    map_strings(value, &|s| resolve_path(&tokenize_path(s, ctx), ctx))
+}
+
+/// Check every entry and link before the first byte is written.
+///
+/// An archive can arrive from anywhere, so it is untrusted input rather than this tool's own
+/// output. Running as one pass up front is what keeps a rejected archive from leaving a half
+/// applied config behind: nothing is written until all of it has passed.
+fn vet(entries: &[Entry], manifest: &Manifest) -> Result<()> {
+    for entry in entries {
+        if entry.path == MANIFEST {
+            continue;
+        }
+        check_safe(&entry.path)?;
+
+        // The manifest is the authority on what an archive may write. An entry that is not listed
+        // there, or whose bytes do not match the hash recorded for it, was added after the archive
+        // was written, so the restore stops rather than the entry being quietly skipped.
+        let Some(record) = manifest.files.iter().find(|f| f.path == entry.path) else {
+            return Err(format!(
+                "archive entry is not listed in manifest.json, refusing to restore: {}",
+                entry.path
+            )
+            .into());
+        };
+        if sha256_hex(&entry.data) != record.sha256 {
+            return Err(format!(
+                "archive entry does not match its manifest hash, refusing to restore: {}",
+                entry.path
+            )
+            .into());
+        }
+    }
+
+    for link in &manifest.links {
+        check_safe(&link.path)?;
+    }
+    Ok(())
+}
+
 pub struct RestoreOptions<'a> {
     pub strategy: MergeStrategy,
     pub dry_run: bool,
@@ -214,7 +292,8 @@ pub fn read_manifest(entries: &[Entry]) -> Result<Manifest> {
         .iter()
         .find(|e| e.path == MANIFEST)
         .ok_or("archive has no manifest.json; refusing to restore")?;
-    let manifest: Manifest = serde_json::from_slice(&entry.data)?;
+    let manifest: Manifest =
+        serde_json::from_slice(&entry.data).map_err(|e| format!("{MANIFEST}: {e}"))?;
 
     if manifest.tool != "claude-code-sync" {
         return Err("not a claude-code-sync archive".into());
@@ -239,6 +318,8 @@ pub fn restore(
     let eol = LineEnding::native();
     let mut actions = Vec::new();
 
+    vet(entries, manifest)?;
+
     for entry in entries {
         if entry.path == MANIFEST {
             continue;
@@ -249,10 +330,14 @@ pub fn restore(
 
         let mut data = entry.data.clone();
         if entry.path == SETTINGS {
-            let archived: serde_json::Value = serde_json::from_slice(&data)?;
+            let archived: serde_json::Value = serde_json::from_slice(&data)
+                .map_err(|e| format!("{SETTINGS} inside the archive: {e}"))?;
             let incoming = map_strings(&archived, &|s| resolve_path(s, &ctx));
             let existing = if absolute.exists() {
-                serde_json::from_slice(&fs::read(&absolute)?)?
+                let bytes = fs::read(&absolute).map_err(at(&absolute))?;
+                let parsed: serde_json::Value = serde_json::from_slice(&bytes)
+                    .map_err(|e| format!("{}: {e}", absolute.display()))?;
+                canonicalize(&parsed, &ctx)
             } else {
                 serde_json::json!({})
             };
@@ -274,9 +359,9 @@ pub fn restore(
             continue;
         }
         if let Some(parent) = absolute.parent() {
-            fs::create_dir_all(parent)?;
+            fs::create_dir_all(parent).map_err(at(parent))?;
         }
-        fs::write(&absolute, data)?;
+        fs::write(&absolute, data).map_err(at(&absolute))?;
     }
 
     for link in &manifest.links {
@@ -293,7 +378,7 @@ pub fn restore(
             continue;
         }
         if let Some(parent) = absolute.parent() {
-            fs::create_dir_all(parent)?;
+            fs::create_dir_all(parent).map_err(at(parent))?;
         }
         if let Err(error) = create_link(Path::new(&target), &absolute) {
             // Windows without developer mode cannot create links; a real copy is the honest fallback.
@@ -366,6 +451,46 @@ mod tests {
         );
     }
 
+    // A crafted archive is the one input this tool cannot vet by hand, so the traversal cases
+    // below are the ones that decide whether restoring a shared archive is safe at all.
+
+    #[test]
+    fn an_ordinary_archive_path_is_accepted() {
+        for path in [
+            "claude/settings.json",
+            "claude/hooks/load-repo-rules.mjs",
+            "agents/skills/grilling/SKILL.md",
+            "claude/projects/c--Users-Ehsan-Desktop-app/memory/MEMORY.md",
+        ] {
+            assert!(check_safe(path).is_ok(), "{path}");
+        }
+    }
+
+    #[test]
+    fn a_path_climbing_out_of_the_restore_roots_is_refused() {
+        for path in [
+            "claude/../../.bashrc",
+            "claude/../.ssh/authorized_keys",
+            r"claude\..\..\.bashrc",
+            "claude/hooks/../../../evil.mjs",
+            "../evil",
+        ] {
+            assert!(check_safe(path).is_err(), "{path}");
+        }
+    }
+
+    #[test]
+    fn an_absolute_or_drive_qualified_path_is_refused() {
+        for path in [
+            "claude//etc/cron.d/evil",
+            "claude/C:/Windows/System32/evil.dll",
+            r"claude/C:\Windows\evil.dll",
+            "claude/./settings.json",
+        ] {
+            assert!(check_safe(path).is_err(), "{path}");
+        }
+    }
+
     #[test]
     fn an_unknown_archive_prefix_maps_nowhere() {
         assert_eq!(target_path(Path::new("/home/dev"), "etc/passwd"), None);
@@ -384,6 +509,38 @@ mod tests {
         assert_eq!(shouted["t"], serde_json::json!(true));
         let keys: Vec<&String> = shouted.as_object().unwrap().keys().collect();
         assert_eq!(keys, vec!["z", "a", "n", "t"]);
+    }
+
+    // Regression: machine B's own settings.json spells its hook path with backslashes, the
+    // restored value spells it with forward slashes, and the array union appended both, so the
+    // stale entry stayed listed and firing.
+    #[test]
+    fn a_local_backslash_path_canonicalizes_onto_the_restored_spelling() {
+        let ctx = PathContext {
+            home: "C:/Users/Ehsan".into(),
+            node: "C:/Program Files/nodejs/node.exe".into(),
+        };
+        let local = serde_json::json!({
+            "hooks": [r"C:\Users\Ehsan\.claude\hooks\x.mjs"],
+            "permissions": ["Bash(npm view:*)", r"a\b\(c\)*?"]
+        });
+        let canonical = canonicalize(&local, &ctx);
+
+        assert_eq!(canonical["hooks"][0], "C:/Users/Ehsan/.claude/hooks/x.mjs");
+        // Values holding no path must survive byte for byte, escapes included.
+        assert_eq!(canonical["permissions"][0], "Bash(npm view:*)");
+        assert_eq!(canonical["permissions"][1], r"a\b\(c\)*?");
+    }
+
+    #[test]
+    fn canonicalizing_twice_changes_nothing_further() {
+        let ctx = PathContext {
+            home: "/home/dev".into(),
+            node: "/usr/bin/node".into(),
+        };
+        let value = serde_json::json!({ "a": "/home/dev/.claude/hooks/x.mjs", "b": "plain" });
+        let once = canonicalize(&value, &ctx);
+        assert_eq!(canonicalize(&once, &ctx), once);
     }
 
     #[test]
