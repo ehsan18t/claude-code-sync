@@ -92,6 +92,32 @@ impl Args {
     }
 }
 
+/// `%Y%m%d-%H%M%S`, written out rather than handed to `strftime`.
+///
+/// chrono's strftime parser is a runtime interpreter, so asking it for one format string that
+/// never changes links about 9 KB of parsing machinery into the binary. Local time is unchanged.
+fn stamp(now: &chrono::DateTime<chrono::Local>) -> String {
+    use chrono::{Datelike, Timelike};
+    format!(
+        "{:04}{:02}{:02}-{:02}{:02}{:02}",
+        now.year(),
+        now.month(),
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second()
+    )
+}
+
+/// Size in KB to one decimal, in integer arithmetic.
+///
+/// `{:.1}` on an f64 is the only float formatting in the whole tool and it costs about 9 KB,
+/// because it links both of core's float-to-decimal paths for one cosmetic line.
+fn kilobytes(bytes: usize) -> String {
+    let tenths = (bytes * 10 + 512) / 1024;
+    format!("{}.{}", tenths / 10, tenths % 10)
+}
+
 fn ask_for(conflicts: &[Conflict]) -> Vec<(String, Choice)> {
     let stdin = io::stdin();
     let mut answers = Vec::new();
@@ -156,7 +182,7 @@ fn run() -> Result<i32> {
                 .unwrap_or(std::env::current_dir()?);
             std::fs::create_dir_all(&directory)
                 .map_err(|e| format!("{}: {e}", directory.display()))?;
-            let name = format!("claude-sync-{host}-{}.zip", now.format("%Y%m%d-%H%M%S"));
+            let name = format!("claude-sync-{host}-{}.zip", stamp(&now));
             let out = directory.join(name);
             std::fs::write(&out, &archive).map_err(|e| format!("{}: {e}", out.display()))?;
 
@@ -165,11 +191,7 @@ fn run() -> Result<i32> {
                 manifest.files.len(),
                 manifest.links.len()
             );
-            println!(
-                "{:.1} KB -> {}",
-                archive.len() as f64 / 1024.0,
-                out.display()
-            );
+            println!("{} KB -> {}", kilobytes(archive.len()), out.display());
             Ok(0)
         }
 
@@ -228,8 +250,7 @@ fn run() -> Result<i32> {
                     host.clone(),
                 )?;
                 std::fs::create_dir_all(&directory)?;
-                let out =
-                    directory.join(format!("pre-restore-{}.zip", now.format("%Y%m%d-%H%M%S")));
+                let out = directory.join(format!("pre-restore-{}.zip", stamp(&now)));
                 std::fs::write(&out, snapshot)?;
                 println!("snapshot of current config -> {}\n", out.display());
             }
@@ -281,5 +302,31 @@ fn main() {
             eprintln!("error: {error}");
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Both helpers exist to keep a formatting path out of the binary, so what they must prove is
+    // that they still print what the thing they replaced printed.
+
+    #[test]
+    fn kilobytes_matches_one_decimal_place() {
+        assert_eq!(kilobytes(0), "0.0");
+        assert_eq!(kilobytes(1024), "1.0");
+        assert_eq!(kilobytes(1536), "1.5");
+        assert_eq!(kilobytes(144588), "141.2");
+        assert_eq!(kilobytes(100), "0.1");
+    }
+
+    #[test]
+    fn a_stamp_is_the_sortable_form_the_filename_expects() {
+        use chrono::TimeZone;
+        let moment = chrono::Local
+            .with_ymd_and_hms(2026, 8, 19, 4, 32, 3)
+            .unwrap();
+        assert_eq!(stamp(&moment), "20260819-043203");
     }
 }

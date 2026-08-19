@@ -16,7 +16,11 @@ readme = "README.md"
 # preserve_order keeps settings.json key order stable across a restore.
 serde_json = { version = "1", features = ["preserve_order"] }
 serde = { version = "1", features = ["derive"] }
-zip = { version = "2", default-features = false, features = ["deflate"] }
+# deflate-flate2 without zip's "deflate" umbrella, which also drags in zopfli. Nothing here ever
+# asks for a compression level zopfli handles, so it was ~30 KB of unreachable encoder.
+# zip declares flate2 optional with default-features off, so the backend is selected here.
+zip = { version = "2", default-features = false, features = ["deflate-flate2", "flate2"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 sha2 = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 dirs = "5"
