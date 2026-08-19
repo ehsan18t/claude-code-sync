@@ -4,7 +4,7 @@
 #
 #   1. Create a repo named exactly  ehsan18t/homebrew-tap
 #   2. Copy this file to           Formula/claude-code-sync.rb
-#   3. Fill in the version and both sha256 values from the published release's SHA256SUMS
+#   3. Fill in the version and all four sha256 values from the published release's SHA256SUMS
 #
 # Users then install with:
 #

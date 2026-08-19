@@ -1,0 +1,52 @@
+name: Bug report
+description: Something backed up, restored or merged wrongly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not paste a real `settings.json` without checking it first. Redact any token, and never attach an archive made with `--include-credentials`.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `claude-code-sync --version`
+      placeholder: claude-code-sync 1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: platforms
+    attributes:
+      label: Backed up on / restored on
+      description: Both operating systems, since most bugs here are cross-OS
+      placeholder: Windows 11 -> macOS 15
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what you got instead
+      placeholder: |
+        $ claude-code-sync restore claude-sync-...zip --dry-run
+        ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: values
+    attributes:
+      label: The value that went wrong
+      description: If a path or a settings value was rewritten incorrectly, paste it before and after, redacted
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I ran `--dry-run` and the plan showed the same problem
+        - label: I have a `pre-restore-*.zip` snapshot if the restore already ran

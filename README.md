@@ -4,7 +4,9 @@
 
 `claude-code-sync backup` packs your `~/.claude` config into a single zip. `claude-code-sync restore` unpacks it on any other machine, on any OS, and rewrites every machine-specific path inside it so your hooks, skills, agents and permissions actually work there.
 
-One static binary. No Node, no Python, no runtime, no admin rights.
+One binary. No Node, no Python, no runtime, no admin rights.
+
+*An independent tool. Not affiliated with, endorsed by, or sponsored by Anthropic.*
 
 ```console
 $ claude-code-sync backup
@@ -39,6 +41,7 @@ This tool stores those paths as `${HOME}` and `${NODE}` tokens and re-expands th
 - **Cross-OS by default.** Archives store LF and are rewritten to the target's native line ending on restore. Binaries are detected and passed through untouched.
 - **Merges rather than clobbers.** `settings.json` is deep merged under a strategy you pick, with arrays unioned and key order preserved, so syncing from one machine does not wipe a permission you added on the other.
 - **Never overwrites without a snapshot.** A full pre-restore backup is written every time, automatically.
+- **An archive is treated as untrusted input.** Every entry must be listed in the manifest, match the SHA-256 recorded for it, and land inside `~/.claude` or `~/.agents`. Anything else stops the restore before a single file is written.
 - **Secrets stay put.** `.credentials.json` is refused by default and cannot be pulled in through the user include list.
 - **Curated, not everything.** Transcripts, caches and session state are left behind, so a backup is about 140 KB rather than hundreds of megabytes.
 
@@ -135,13 +138,15 @@ claude/history.jsonl
 claude/context-mode/
 ```
 
-Paths are archive-relative: `claude/…` is `~/.claude`, `agents/…` is `~/.agents`. The list itself is carried, so it travels with your setup. `.credentials.json` is checked before this list and cannot be included through it.
+Paths are archive-relative: `claude/…` is `~/.claude`, `agents/…` is `~/.agents`. The list itself is carried, so it travels with your setup. Two rules are checked before this list and cannot be overridden through it: `.credentials.json` is never carried without `--include-credentials`, and no `.zip` is ever carried.
 
 To see exactly what an archive holds, read `manifest.json` inside the zip. It lists every file with its size and SHA-256, plus the tool version, source OS, hostname and timestamp.
 
 ## Install
 
-One line. No runtime, no admin rights.
+One line. No runtime, no admin rights. Both installers check the download against the release's `SHA256SUMS` and refuse to install on a mismatch.
+
+> The one-liners pull from the latest **published** release. If none has been published yet they will report that the asset is missing; build from source in the meantime.
 
 **Windows** (PowerShell):
 
@@ -194,6 +199,12 @@ The archive always stores LF. On restore, files are rewritten to the target's na
 - Every entry carries a CRC32, verified on read. A corrupt archive fails loudly.
 - Credentials are refused by default, with a warning naming the file that was skipped.
 
+An archive can arrive from anywhere, so restore treats one as untrusted input rather than as its own output:
+
+- An entry whose path climbs out of `~/.claude` or `~/.agents` is refused. A zip naming `claude/../../.bashrc` would otherwise be joined straight onto your home directory, so the check runs on the path components, in either separator style, before anything is written.
+- An entry absent from `manifest.json`, or whose bytes do not match the SHA-256 recorded there, is refused. The manifest is the authority on what an archive may write, which makes appending a file to someone else's archive fail loudly instead of silently.
+- Both checks run for the whole archive before the first write, so a rejected archive leaves nothing half-applied.
+
 ## Building from source
 
 ```sh
@@ -201,7 +212,7 @@ cargo build --release
 cargo test
 ```
 
-63 tests. The pure logic is covered directly: path tokenization, settings merge across all four strategies, line-ending and binary handling, include/exclude classification, and archive round-tripping. Filesystem walking and symlink recreation are covered by a real backup-and-restore round trip into a `CLAUDE_SYNC_HOME` directory rather than by mocks, because that is what catches the failures mocks hide.
+68 tests. The pure logic is covered directly: path tokenization, settings merge across all four strategies, line-ending and binary handling, include/exclude classification, archive round-tripping, and the archive-path rules that reject a crafted zip. Filesystem walking and symlink recreation are covered by a real backup-and-restore round trip into a `CLAUDE_SYNC_HOME` directory rather than by mocks, because that is what catches the failures mocks hide.
 
 ## Releasing
 
