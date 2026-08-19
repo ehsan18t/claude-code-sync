@@ -18,6 +18,7 @@ jobs:
   version:
     name: resolve version
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       tag: ${{ steps.resolve.outputs.tag }}
@@ -73,10 +74,12 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             asset: claude-code-sync-linux-x86_64
-          - os: ubuntu-latest
+          # Built on a native arm64 runner rather than cross-compiled from x86_64. The cross
+          # build needed gcc-aarch64-linux-gnu from apt, and a runner whose Azure mirror was
+          # down once hung that install until the job hit the six-hour ceiling.
+          - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             asset: claude-code-sync-linux-arm64
-            linker: gcc-aarch64-linux-gnu
           - os: macos-latest
             target: aarch64-apple-darwin
             asset: claude-code-sync-macos-arm64
@@ -85,18 +88,14 @@ jobs:
             asset: claude-code-sync-macos-x86_64
 
     runs-on: ${{ matrix.os }}
+    # A build takes minutes. Anything past this is a wedged runner, not slow work, and the
+    # default six-hour ceiling is far too patient about it.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
       - name: Add target
         run: rustup target add ${{ matrix.target }}
-
-      - name: Install cross linker
-        if: matrix.linker
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ${{ matrix.linker }}
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
@@ -118,6 +117,7 @@ jobs:
     name: draft release
     needs: [version, build]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
