@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 1.0.0). Leave blank to use the Cargo.toml version.'
+        description: "Version to release (e.g. 1.0.0). Leave blank to use the Cargo.toml version."
         required: false
         type: string
 
@@ -18,12 +18,12 @@ jobs:
   version:
     name: resolve version
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       tag: ${{ steps.resolve.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resolve version
         id: resolve
@@ -92,7 +92,7 @@ jobs:
     # default six-hour ceiling is far too patient about it.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Add target
         run: rustup target add ${{ matrix.target }}
@@ -107,7 +107,7 @@ jobs:
           [ -f "$binary.exe" ] && binary="$binary.exe"
           cp "$binary" "${{ matrix.asset }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}
@@ -121,14 +121,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
 
       - name: Checksums
         run: sha256sum claude-code-sync-* > SHA256SUMS
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
