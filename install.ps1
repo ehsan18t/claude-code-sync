@@ -64,19 +64,46 @@ $arch = switch ($env:PROCESSOR_ARCHITECTURE) {
 }
 
 $asset = "$Name-windows-$arch.exe"
-$url = "https://github.com/$Repo/releases/latest/download/$asset"
+$base = "https://github.com/$Repo/releases/latest/download"
 
 Write-Host "Downloading $asset"
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 $temp = Join-Path ([IO.Path]::GetTempPath()) "$Name-$([guid]::NewGuid()).exe"
 
 try {
-    Invoke-WebRequest -Uri $url -OutFile $temp -UseBasicParsing
+    Invoke-WebRequest -Uri "$base/$asset" -OutFile $temp -UseBasicParsing
 } catch {
     throw "download failed. Is there a published release with $asset? ($_)"
 }
 
 if ((Get-Item $temp).Length -eq 0) { throw 'downloaded file is empty' }
+
+# Check the download against the release's SHA256SUMS before it is put on PATH.
+$sums = Join-Path ([IO.Path]::GetTempPath()) "$Name-$([guid]::NewGuid()).sums"
+try {
+    Invoke-WebRequest -Uri "$base/SHA256SUMS" -OutFile $sums -UseBasicParsing
+} catch {
+    Remove-Item -Force $temp -ErrorAction SilentlyContinue
+    throw "could not download SHA256SUMS, so $asset cannot be verified ($_)"
+}
+
+$line = Get-Content $sums | Where-Object { $_ -match "\s\*?$([regex]::Escape($asset))$" } | Select-Object -First 1
+$expected = if ($line) { ($line -split '\s+' | Select-Object -First 1) } else { $null }
+Remove-Item -Force $sums -ErrorAction SilentlyContinue
+
+if (-not $expected) {
+    Remove-Item -Force $temp -ErrorAction SilentlyContinue
+    throw "SHA256SUMS has no entry for $asset"
+}
+
+$actual = (Get-FileHash -Path $temp -Algorithm SHA256).Hash
+if ($actual -ne $expected.ToUpper()) {
+    Remove-Item -Force $temp -ErrorAction SilentlyContinue
+    Write-Host "expected $($expected.ToUpper())"
+    Write-Host "got      $actual"
+    throw "checksum mismatch for $asset, refusing to install"
+}
+Write-Host 'Checksum verified'
 
 # Move-Item -Force fails while a previous copy is running; stop it first if we can.
 Get-Process -Name $Name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue

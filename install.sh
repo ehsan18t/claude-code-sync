@@ -89,14 +89,44 @@ esac
 
 # The macOS x86_64 asset keeps the x86_64 name; only Linux/macOS arm uses arm64.
 asset="$NAME-$os-$arch"
-url="https://github.com/$REPO/releases/latest/download/$asset"
+base="https://github.com/$REPO/releases/latest/download"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
+# Check the download against the release's SHA256SUMS before it is put on PATH.
+# A missing or mismatched sum stops the install; a machine with no sha256 tool at all only warns,
+# because refusing to install over a missing coreutils binary helps nobody.
+verify() {
+  file="$1"
+  name="$2"
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual=$(sha256sum "$file" | cut -d' ' -f1)
+  elif command -v shasum >/dev/null 2>&1; then
+    actual=$(shasum -a 256 "$file" | cut -d' ' -f1)
+  else
+    say "warning: no sha256sum or shasum on this machine, the download was NOT verified"
+    return 0
+  fi
+
+  $fetch "$tmp/SHA256SUMS" "$base/SHA256SUMS" \
+    || die "could not download SHA256SUMS, so $name cannot be verified"
+  expected=$(awk -v n="$name" '$2 == n || $2 == "*" n { print $1; exit }' "$tmp/SHA256SUMS")
+  [ -n "$expected" ] || die "SHA256SUMS has no entry for $name"
+
+  if [ "$actual" != "$expected" ]; then
+    say "expected $expected"
+    say "got      $actual"
+    die "checksum mismatch for $name, refusing to install"
+  fi
+  say "Checksum verified"
+}
+
 say "Downloading $asset"
-$fetch "$tmp/$NAME" "$url" || die "download failed. Is there a published release with $asset?"
+$fetch "$tmp/$NAME" "$base/$asset" || die "download failed. Is there a published release with $asset?"
 [ -s "$tmp/$NAME" ] || die "downloaded file is empty"
+verify "$tmp/$NAME" "$asset"
 chmod +x "$tmp/$NAME"
 
 bindir=$(resolve_bindir)
