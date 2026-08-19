@@ -144,9 +144,7 @@ To see exactly what an archive holds, read `manifest.json` inside the zip. It li
 
 ## Install
 
-One line. No runtime, no admin rights. Both installers check the download against the release's `SHA256SUMS` and refuse to install on a mismatch.
-
-> The one-liners pull from the latest **published** release. If none has been published yet they will report that the asset is missing; build from source in the meantime.
+One line. No runtime, no admin rights. Both installers pull the latest release and check the download against its `SHA256SUMS`, refusing to install on a mismatch.
 
 **Windows** (PowerShell):
 
@@ -163,6 +161,21 @@ curl -fsSL https://raw.githubusercontent.com/ehsan18t/claude-code-sync/main/inst
 Then open a new terminal and run `claude-code-sync`.
 
 Windows installs to `%LOCALAPPDATA%\Programs\claude-code-sync` and adds it to your user PATH. Linux and macOS install to `/usr/local/bin`, falling back to `~/.local/bin` when that is not writable. Set `BINDIR` to choose somewhere else.
+
+### Manual download
+
+Prebuilt binaries for every target are on the [latest release](https://github.com/ehsan18t/claude-code-sync/releases/latest), alongside a `SHA256SUMS` file to check them against. Download one, rename it to `claude-code-sync`, and put it anywhere on your PATH.
+
+| Target | Asset |
+|---|---|
+| Windows x86_64 | `claude-code-sync-windows-x86_64.exe` |
+| Windows arm64 | `claude-code-sync-windows-arm64.exe` |
+| Linux x86_64 | `claude-code-sync-linux-x86_64` |
+| Linux arm64 | `claude-code-sync-linux-arm64` |
+| macOS arm64 | `claude-code-sync-macos-arm64` |
+| macOS x86_64 | `claude-code-sync-macos-x86_64` |
+
+On Linux and macOS, `chmod +x` it first.
 
 ### Uninstall
 
@@ -213,27 +226,6 @@ cargo test
 ```
 
 68 tests. The pure logic is covered directly: path tokenization, settings merge across all four strategies, line-ending and binary handling, include/exclude classification, archive round-tripping, and the archive-path rules that reject a crafted zip. Filesystem walking and symlink recreation are covered by a real backup-and-restore round trip into a `CLAUDE_SYNC_HOME` directory rather than by mocks, because that is what catches the failures mocks hide.
-
-## Releasing
-
-Two pipelines, deliberately separate. `ci.yml` runs on every push and pull request: `cargo fmt --check`, `cargo clippy -D warnings`, and the test suite. No binaries are built, so a commit stays cheap. `release.yml` runs only on a `v*` tag, or manually via workflow dispatch. It builds all six targets, generates `SHA256SUMS`, and opens a **draft** release. Nothing goes public until you read the draft on GitHub and publish it yourself.
-
-```sh
-git tag v1.0.0
-git push origin v1.0.0
-# then review the draft at github.com/ehsan18t/claude-code-sync/releases and publish
-```
-
-Because the release is a draft, the install one-liners above will not find the assets until you publish it. That is the intended order.
-
-| Target | Asset |
-|---|---|
-| Windows x86_64 | `claude-code-sync-windows-x86_64.exe` |
-| Windows arm64 | `claude-code-sync-windows-arm64.exe` |
-| Linux x86_64 | `claude-code-sync-linux-x86_64` |
-| Linux arm64 | `claude-code-sync-linux-arm64` |
-| macOS arm64 | `claude-code-sync-macos-arm64` |
-| macOS x86_64 | `claude-code-sync-macos-x86_64` |
 
 ## License
 

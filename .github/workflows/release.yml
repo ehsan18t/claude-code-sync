@@ -1,22 +1,65 @@
 name: release
 
-# Builds every supported binary and opens a DRAFT release. Nothing is published until you
-# review the draft on GitHub and hit publish yourself.
+# Manual only. Pick a version (or leave it blank to use the one in Cargo.toml), and this
+# builds every supported binary and opens a DRAFT release. No tag exists yet: GitHub creates
+# it against this commit the moment you review the draft and hit publish.
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Tag to build (e.g. v1.0.0)'
-        required: true
+      version:
+        description: 'Version to release (e.g. 1.0.0). Leave blank to use the Cargo.toml version.'
+        required: false
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  version:
+    name: resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: resolve
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="${INPUT_VERSION#v}"
+          if [ -z "$version" ]; then
+            version=$(grep -m1 '^version *= *"' Cargo.toml | sed -E 's/^version *= *"([^"]+)".*/\1/')
+            echo "No version given, using Cargo.toml: $version"
+          else
+            cargo_version=$(grep -m1 '^version *= *"' Cargo.toml | sed -E 's/^version *= *"([^"]+)".*/\1/')
+            if [ "$version" != "$cargo_version" ]; then
+              echo "::warning::Requested $version but Cargo.toml says $cargo_version. The binaries will report $cargo_version."
+            fi
+          fi
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::'$version' is not a semver version."; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$version from ${{ github.sha }}"
+
+      - name: Reject an existing tag
+        run: |
+          set -euo pipefail
+          tag="${{ steps.resolve.outputs.tag }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::Tag $tag already exists. Bump the version in Cargo.toml first."
+            exit 1
+          fi
+
   build:
     name: ${{ matrix.asset }}
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -44,8 +87,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag || github.ref }}
 
       - name: Add target
         run: rustup target add ${{ matrix.target }}
@@ -75,7 +116,7 @@ jobs:
 
   draft:
     name: draft release
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -89,7 +130,9 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
+          tag_name: ${{ needs.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ needs.version.outputs.tag }}
           draft: true
           generate_release_notes: true
           files: |
